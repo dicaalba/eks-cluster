@@ -69,6 +69,7 @@ log "INSTALANDO dependencias..."
 sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common || handle_error "No se pudieron instalar las dependencias"
 
 # Instalar Docker
+# Instalar Docker
 install_if_not_exists docker "
     # Descargar el script de instalación de Docker
     curl -fsSL https://get.docker.com -o get-docker.sh || handle_error 'No se pudo descargar get-docker.sh'
