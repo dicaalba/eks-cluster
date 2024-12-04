@@ -84,13 +84,25 @@ install_if_not_exists kubectl "
 "
 
 # Instalar eksctl
-install_if_not_exists eksctl "curl --silent --location 'https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz' | tar xz -C /tmp && sudo mv /tmp/eksctl /usr/local/bin || handle_error 'Error al descargar o instalar eksctl'"
+install_if_not_exists eksctl "
+    curl --silent --location https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz | \
+    tar xz -C /tmp && \
+    sudo mv /tmp/eksctl /usr/local/bin
+"
 
 # Instalar AWS CLI
-install_if_not_exists aws "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip' && unzip awscliv2.zip && sudo ./aws/install || handle_error 'Error al instalar AWS CLI'"
+install_if_not_exists aws "
+    curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip' && \
+    unzip awscliv2.zip && \
+    sudo ./aws/install
+"
 
 # Instalar aws-iam-authenticator
-install_if_not_exists aws-iam-authenticator "curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/aws-iam-authenticator && chmod +x ./aws-iam-authenticator && sudo mv ./aws-iam-authenticator /usr/local/bin || handle_error 'Error al instalar aws-iam-authenticator'"
+install_if_not_exists aws-iam-authenticator "
+    curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/aws-iam-authenticator && \
+    chmod +x ./aws-iam-authenticator && \
+    sudo mv ./aws-iam-authenticator /usr/local/bin
+"
 
 # Crear o actualizar cluster EKS
 if cluster_exists; then
