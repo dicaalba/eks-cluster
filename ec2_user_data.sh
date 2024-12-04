@@ -70,14 +70,8 @@ sudo apt-get install -y apt-transport-https ca-certificates curl software-proper
 
 # Instalar Docker
 # Instalar Docker
-install_if_not_exists docker "
-    # Descargar el script de instalación de Docker
-    curl -fsSL https://get.docker.com -o get-docker.sh || handle_error 'No se pudo descargar get-docker.sh'
-    # Ejecutar el script de instalación de Docker
-    sudo sh get-docker.sh || handle_error 'No se pudo instalar Docker'
-    # Eliminar el script después de la instalación
-    rm get-docker.sh
-"
+# Instalar Docker
+install_if_not_exists docker "curl -fsSL https://get.docker.com -o get-docker.sh | sudo sh get-docker.sh | rm get-docker.sh"
 
 # Instalar Docker Compose
 install_if_not_exists docker-compose "sudo curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose || handle_error 'No se pudo instalar Docker Compose'"
