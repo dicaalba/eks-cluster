@@ -1,0 +1,290 @@
+name: Deploy Infra y Nginx
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: tarea3-cluster
+  NODE_TYPE: t3.medium
+  NODE_COUNT: 2
+  AMI_ID: ami-0261755bbcb8c4a84  # AMI ID for Ubuntu 20.04 LTS in us-east-1
+  
+jobs: 
+  Credenciales:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Generate SSH key
+      run: |
+        if [ ! -f bastion-server.pem ]; then
+          ssh-keygen -t rsa -b 4096 -f bastion-server.pem -N ""
+          mv bastion-server.pem.pub bastion-server.pub
+        fi
+
+    - name: Upload SSH key
+      uses: actions/upload-artifact@v3
+      with:
+          name: ssh-key
+          path: |
+            bastion-server.pem
+            bastion-server.pub
+  
+    - name: Upload CloudFormation template
+      uses: actions/upload-artifact@v3
+      with:
+        name: cloudformation-template
+        path: cloudformation/ec2-stack.yaml
+
+  Deploy_CloudFormation:
+    needs: Credenciales
+    runs-on: ubuntu-latest
+    outputs:
+      ec2_ip: ${{ steps.ec2-ip.outputs.ec2_ip }}
+      stack_updated: ${{ steps.deploy-cfn.outputs.stack_updated }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3 
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Download SSH key
+      uses: actions/download-artifact@v3
+      with:
+        name: ssh-key
+
+    - name: Download CloudFormation template
+      uses: actions/download-artifact@v3
+      with:
+        name: cloudformation-template
+        path: cloudformation
+
+    - name: Deploy or update CloudFormation stack
+      id: deploy-cfn     
+      run: |
+        STACK_NAME=bastion-server-ec2-stack
+
+        if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>&1 | grep -q 'does not exist'; then
+          echo "Stack does not exist. Creating new stack..."
+          if ! aws cloudformation deploy \
+            --template-file cloudformation/ec2-stack.yaml \
+            --stack-name $STACK_NAME \
+            --parameter-overrides \
+              KeyName=bastion-server \
+              PublicKeyMaterial="$(cat bastion-server.pub)" \
+              InstanceType="t3.medium" \
+              AMI="ami-0261755bbcb8c4a84" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM; then
+            echo "Failed to create stack"
+            aws cloudformation describe-stack-events --stack-name $STACK_NAME --query 'StackEvents[?ResourceStatus==`CREATE_FAILED`].[LogicalResourceId,ResourceStatusReason]' --output table
+            exit 1
+          fi
+          echo "stack_updated=true" >> $GITHUB_OUTPUT
+        else
+          echo "Stack exists. Checking for changes..."
+        fi      
+      env:
+        NODE_TYPE: ${{ env.NODE_TYPE }}
+        AMI_ID: ${{ env.AMI_ID }}
+
+    - name: Get EC2 Public IP
+      id: ec2-ip
+      run: |
+        EC2_IP=$(aws cloudformation describe-stacks --stack-name bastion-server-ec2-stack --query "Stacks[0].Outputs[?OutputKey=='EC2PublicIP'].OutputValue" --output text)
+        echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+
+    - name: Wait for EC2 instance to be ready
+      run: |
+        echo "Waiting for EC2 instance to be ready..."
+        timeout 300 bash -c 'until nc -z ${{ steps.ec2-ip.outputs.ec2_ip }} 22; do sleep 5; done'
+
+    - name: Setup AWS credentials on EC2
+      run: |
+        chmod 600 bastion-server.pem
+        ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} '
+        mkdir -p ~/.aws
+        echo "[default]
+        aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws_secret_access_key=\${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        region=${{ env.AWS_REGION }}" > ~/.aws/credentials
+        '
+    - name: Upload SSH key and connection info
+      uses: actions/upload-artifact@v3
+      with:
+        name: ssh-key-and-info
+        path: |
+          bastion-server.pem
+
+  Conexion_EC2:
+    needs: Deploy_CloudFormation
+    runs-on: ubuntu-latest
+    outputs:
+      cluster_name: ${{ steps.cluster_info.outputs.cluster_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3 
+
+      - name: Download SSH key
+        uses: actions/download-artifact@v3
+        with:
+          name: ssh-key
+        
+      - name: Set permissions for SSH key
+        run: chmod 600 bastion-server.pem
+
+      - name: List files
+        run: ls -la
+
+      - name: List workspace contents
+        run: |
+          pwd
+          ls -R $GITHUB_WORKSPACE
+          
+      - name: Connect to EC2 and setup cluster
+        if: needs.Deploy_CloudFormation.outputs.stack_updated == 'true'
+        run: |
+            ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} \
+            'CLUSTER_NAME=cluster-PIN \
+            AWS_REGION=us-east-1 \
+            NODE_TYPE=t3.medium \
+            NODE_COUNT=3 bash -s' <<EOF
+            $(cat $GITHUB_WORKSPACE/ec2_user_data.sh)
+            EOF
+        
+
+      - name: Get cluster info
+        id: cluster_info
+        run: |
+          CLUSTER_NAME=$(ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} 'echo $CLUSTER_NAME')
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+
+  Deploy_Nginx:
+      needs: [Deploy_CloudFormation, Conexion_EC2]
+      runs-on: ubuntu-latest
+      outputs:
+        nginx_url: ${{ steps.nginx-url.outputs.nginx_url }}
+      steps:
+      - name: Checkout code
+        uses: actions/checkout@v3      
+      - name: Download SSH key
+        uses: actions/download-artifact@v3
+        with:
+          name: ssh-key
+        
+      - name: Set permissions for SSH key
+        run: chmod 600 bastion-server.pem
+        
+      - name: Deploy Nginx
+        run: |
+            EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+            # Copiar archivos al EC2        
+            scp -i bastion-server.pem -o StrictHostKeyChecking=no kubernetes/nginx-deployment.yaml kubernetes/nginx-service.yaml kubernetes/nginx-index-html-configmap.yaml ubuntu@$EC2_IP:~
+                
+            # Aplicar los archivos
+            ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
+            kubectl apply -f nginx-index-html-configmap.yaml
+            kubectl apply -f nginx-deployment.yaml
+            kubectl apply -f nginx-service.yaml
+          
+            # Esperar a que el pod esté listo
+            kubectl rollout status deployment/nginx
+            '
+          
+      - name: Get Nginx Service URL
+        id: nginx-url
+        run: |
+          EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+          NGINX_URL=$(ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
+          kubectl get service nginx-service -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"
+          ')
+          echo "nginx_url=http://$NGINX_URL" >> $GITHUB_OUTPUT
+            
+      - name: Save initial connection information
+        run: |
+          echo "EC2 Public IP: ${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" > connection_info.txt
+          echo "Nginx Service URL: ${{ steps.nginx-url.outputs.nginx_url }}" >> connection_info.txt
+          echo "To connect via SSH: ssh -i bastion-server.pem ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}" >> connection_info.txt
+          
+      - name: Upload initial connection info
+        uses: actions/upload-artifact@v3
+        with:
+          name: connection-info
+          path: connection_info.txt      
+  
+  Create_Connection_Info:
+    needs: [Deploy_CloudFormation, Deploy_Nginx, Conexion_EC2]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3 
+      - name: Create connection info
+        run: |
+          cat <<EOF > connection_info.txt
+          EC2 Public IP: ${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+          Nginx Service URL: ${{ needs.Deploy_Nginx.outputs.nginx_url }}
+
+          To connect via SSH: ssh -i bastion-server.pem ubuntu@\${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+          EOF
+
+      - name: Upload connection info
+        uses: actions/upload-artifact@v3
+        with:
+          name: connection-info
+          path: connection_info.txt
+
+  Final_Setup:
+    needs: [Create_Connection_Info]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3 
+      - name: Download connection info
+        uses: actions/download-artifact@v3
+        with:
+          name: connection-info
+      - name: Display final connection info
+        run: cat connection_info.txt
+      - name: Upload final connection info
+        uses: actions/upload-artifact@v3
+        with:
+          name: connection-info
+          path: connection_info.txt
+
+  Download_Kubeconfig:
+    needs: [Deploy_CloudFormation, Conexion_EC2]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3   
+    - name: Download SSH key
+      uses: actions/download-artifact@v3
+      with:
+        name: ssh-key
+
+    - name: Set permissions for SSH key
+      run: chmod 600 bastion-server.pem
+
+    - name: Download kubeconfig
+      run: |
+        EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+        scp -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP:~/.kube/config ./kubeconfig
+
+    - name: Upload kubeconfig as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: kubeconfig
+        path: ./kubeconfig
