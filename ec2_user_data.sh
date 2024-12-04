@@ -78,7 +78,7 @@ install_if_not_exists docker-compose "curl -L 'https://github.com/docker/compose
 
 # Instalar kubectl
 install_if_not_exists kubectl "
-    curl -LO 'https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl' && \
+    curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl && \
     sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
     kubectl version --client
 "
