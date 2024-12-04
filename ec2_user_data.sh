@@ -74,7 +74,7 @@ sudo apt-get install -y apt-transport-https ca-certificates curl software-proper
 install_if_not_exists docker "curl -fsSL https://get.docker.com -o get-docker.sh | sudo sh get-docker.sh | rm get-docker.sh"
 
 # Instalar Docker Compose
-install_if_not_exists docker-compose "sudo curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose || handle_error 'No se pudo instalar Docker Compose'"
+install_if_not_exists docker-compose "curl -L 'https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose | sudo chmod +x /usr/local/bin/docker-compose | docker-compose --version"
 
 # Instalar kubectl
 install_if_not_exists kubectl "curl -LO 'https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl' && sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl || handle_error 'Error al descargar o instalar kubectl'"
