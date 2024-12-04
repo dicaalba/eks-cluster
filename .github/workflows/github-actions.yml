@@ -161,10 +161,10 @@ jobs:
         if: needs.Deploy_CloudFormation.outputs.stack_updated == 'true'
         run: |
             ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@${{ needs.Deploy_CloudFormation.outputs.ec2_ip }} \
-            'CLUSTER_NAME=cluster-PIN \
+            'CLUSTER_NAME=tarea3-cluster \
             AWS_REGION=us-east-1 \
             NODE_TYPE=t3.medium \
-            NODE_COUNT=3 bash -s' <<EOF
+            NODE_COUNT=2 bash -s' <<EOF
             $(cat $GITHUB_WORKSPACE/ec2_user_data.sh)
             EOF
         
