@@ -1,12 +1,12 @@
 #!/bin/bash
 set -x
 
-# $AWS_REGION=us-east-1
-# $CLUSTER_NAME=cluster-PIN 
-# $NODE_TYPE=t3.medium
-# $NODE_COUNT=3
-
 # Variables de entorno
+AWS_REGION=us-east-1
+CLUSTER_NAME=cluster-PIN 
+NODE_TYPE=t3.medium
+NODE_COUNT=3
+
 echo "Cluster Name: $CLUSTER_NAME"
 echo "AWS Region: $AWS_REGION"
 echo "Node Type: $NODE_TYPE"
@@ -19,6 +19,7 @@ wait_for_apt() {
     sleep 5
   done
 }
+
 # Función para logging
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
@@ -47,7 +48,7 @@ update_cluster() {
 install_if_not_exists() {
     if ! command -v $1 &> /dev/null; then
         log "Instalando $1..."
-        $2
+        $2 || handle_error "No se pudo instalar $1"
     else
         log "$1 ya está instalado, omitiendo instalación."
     fi
@@ -60,7 +61,7 @@ sudo apt-get update && sudo apt-get upgrade -y || handle_error "No se pudo actua
 echo "INSTALANDO Unzip"
 wait_for_apt
 sudo apt-get update
-sudo apt-get install -y unzip
+sudo apt-get install -y unzip || handle_error "No se pudo instalar Unzip"
 unzip -v
 
 # Instalar dependencias
@@ -71,19 +72,19 @@ sudo apt-get install -y apt-transport-https ca-certificates curl software-proper
 install_if_not_exists docker "sudo sh get-docker.sh || handle_error 'No se pudo instalar Docker'"
 
 # Instalar Docker Compose
-install_if_not_exists docker-compose "sudo curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose"
+install_if_not_exists docker-compose "sudo curl -L 'https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)' -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose || handle_error 'No se pudo instalar Docker Compose'"
 
 # Instalar kubectl
-install_if_not_exists kubectl "curl -LO 'https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl' && sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl"
+install_if_not_exists kubectl "curl -LO 'https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl' && sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl || handle_error 'Error al descargar o instalar kubectl'"
 
 # Instalar eksctl
-install_if_not_exists eksctl "curl --silent --location 'https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz' | tar xz -C /tmp && sudo mv /tmp/eksctl /usr/local/bin"
+install_if_not_exists eksctl "curl --silent --location 'https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz' | tar xz -C /tmp && sudo mv /tmp/eksctl /usr/local/bin || handle_error 'Error al descargar o instalar eksctl'"
 
 # Instalar AWS CLI
-install_if_not_exists aws "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip' && unzip awscliv2.zip && sudo ./aws/install"
+install_if_not_exists aws "curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o 'awscliv2.zip' && unzip awscliv2.zip && sudo ./aws/install || handle_error 'Error al instalar AWS CLI'"
 
 # Instalar aws-iam-authenticator
-install_if_not_exists aws-iam-authenticator "curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/aws-iam-authenticator && chmod +x ./aws-iam-authenticator && sudo mv ./aws-iam-authenticator /usr/local/bin"
+install_if_not_exists aws-iam-authenticator "curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21.2/2021-07-05/bin/linux/amd64/aws-iam-authenticator && chmod +x ./aws-iam-authenticator && sudo mv ./aws-iam-authenticator /usr/local/bin || handle_error 'Error al instalar aws-iam-authenticator'"
 
 # Crear o actualizar cluster EKS
 if cluster_exists; then
@@ -99,17 +100,19 @@ else
       --node-type $NODE_TYPE \
       --nodes $NODE_COUNT \
       --nodes-min 1 \
-      --nodes-max 4
+      --nodes-max 4 || handle_error "No se pudo crear el cluster EKS"
 fi    
-  
+
 log "Configurando kubectl..."
 log "Configurando kubectl para el nuevo cluster..."
 if ! aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION; then
     log "Error al actualizar kubeconfig"
     exit 1
 fi
+
 log "Contenido de kubeconfig:"
 cat ~/.kube/config | while read line; do log "$line"; done
+
 log "Versión de kubectl:"
 kubectl version --client | while read line; do log "$line"; done
 
@@ -133,17 +136,19 @@ log "Configuración completada. El cluster EKS está listo para usar."
 
 log "Instalando Helm"
 # Instalar Helm
-install_if_not_exists helm "curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash"
+install_if_not_exists helm "curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash || handle_error 'No se pudo instalar Helm'"
 
 # Asegurarse de que las configuraciones estén disponibles para el usuario ubuntu
 mkdir -p /home/ubuntu/.kube
 mkdir -p /root/.kube
-sudo sudo cp /root/.kube/config /home/ubuntu/.kube/config
+sudo cp /root/.kube/config /home/ubuntu/.kube/config
 sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
 # Añadir kubectl al PATH del usuario ubuntu
 log 'export PATH=$PATH:/usr/local/bin' >> /home/ubuntu/.bashrc
 source /home/ubuntu/.bashrc
+
+# Asegurarse de que kubectl está configurado correctamente
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 
 log "Configuración del cluster EKS completada."
