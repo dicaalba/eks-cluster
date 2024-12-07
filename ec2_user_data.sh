@@ -81,9 +81,7 @@ eksctl create cluster \
   --region $AWS_REGION \
   --nodegroup-name tarea3-nodes \
   --node-type $NODE_TYPE \
-  --nodes $NODE_COUNT \
-  --nodes-min 1 \
-  --nodes-max 1 \
+  --nodes $NODE_COUNT 
   
 log "Configurando kubectl..."
 log "Configurando kubectl para el nuevo cluster..."
