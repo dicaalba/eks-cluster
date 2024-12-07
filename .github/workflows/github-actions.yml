@@ -1,7 +1,9 @@
 name: Deploy Infra y Nginx
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 env:
   AWS_REGION: us-east-1
@@ -62,6 +64,7 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
+        aws-region: ${{ env.AWS_REGION }}
         role-to-assume: arn:aws:iam::031842254778:role/github-assume-role
         role-session-name: github-assume-session
 
