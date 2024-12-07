@@ -10,7 +10,7 @@ env:
   CLUSTER_NAME: tarea3-cluster
   NODE_TYPE: t3.medium
   NODE_COUNT: 2
-  AMI_ID: ami-0261755bbcb8c4a84  # AMI ID for Ubuntu 20.04 LTS in us-east-1
+  AMI_ID: ami-0261755bbcb8c4a84  # AMI ID for Ubuntu 20.04 LTS in us-east-1 region
 
 permissions:
   contents: read
