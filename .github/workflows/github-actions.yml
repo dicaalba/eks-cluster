@@ -115,7 +115,6 @@ jobs:
         timeout 300 bash -c 'until nc -z ${{ steps.ec2-ip.outputs.ec2_ip }} 22; do sleep 5; done'
 
     - name: Setup AWS credentials on EC2
-    - name: Setup AWS credentials on EC2
       run: |
         chmod 600 bastion-server.pem
         ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ec2_ip }} '
