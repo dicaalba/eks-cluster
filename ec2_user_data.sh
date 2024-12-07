@@ -2,7 +2,6 @@
 set -x
 
 # Variables de entorno
-# Acceder a las variables de entorno
 echo "Cluster Name: $CLUSTER_NAME"
 echo "AWS Region: $AWS_REGION"
 echo "Node Type: $NODE_TYPE"
@@ -15,6 +14,7 @@ wait_for_apt() {
     sleep 5
   done
 }
+
 # Función para logging
 log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
@@ -31,7 +31,8 @@ handle_error() {
 log "Actualizando el sistema..."
 sudo apt-get update && sudo apt-get upgrade -y || handle_error "No se pudo actualizar el sistema"
 
-echo "INSTALANDO Unzip"
+# Instalar unzip
+log "INSTALANDO Unzip"
 wait_for_apt
 sudo apt-get update
 sudo apt-get install -y unzip
@@ -57,11 +58,6 @@ log "INSTALANDO kubectl..."
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" || handle_error "No se pudo descargar kubectl"
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl || handle_error "No se pudo instalar kubectl"
 
-# Instalar eksctl
-log "INSTALANDO eksctl..."
-curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp || handle_error "No se pudo descargar eksctl"
-sudo mv /tmp/eksctl /usr/local/bin || handle_error "No se pudo mover eksctl a /usr/local/bin"
-
 # Instalar AWS CLI
 log "INSTALANDO AWS CLI..."
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" || handle_error "No se pudo descargar AWS CLI"
@@ -73,24 +69,44 @@ curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.21
 chmod +x ./aws-iam-authenticator
 sudo mv ./aws-iam-authenticator /usr/local/bin
 
-# Crear cluster EKS
+# Crear el cluster EKS utilizando AWS CLI
 log "Creando cluster EKS..."
-eksctl create cluster \
+aws eks create-cluster \
   --name $CLUSTER_NAME \
-  --version 1.30 \
   --region $AWS_REGION \
+  --role-arn arn:aws:iam::$AWS_ACCOUNT_ID:role/$EKS_CLUSTER_ROLE \
+  --resources-vpc-config subnetIds=$SUBNET_IDS,securityGroupIds=$SECURITY_GROUP_IDS \
+  --kubernetes-version 1.30 || handle_error "No se pudo crear el cluster EKS"
+
+log "Esperando a que el cluster EKS esté disponible..."
+# Esperamos a que el clúster esté en estado activo
+aws eks wait cluster-active --name $CLUSTER_NAME --region $AWS_REGION || handle_error "El cluster EKS no se activó correctamente"
+
+# Crear el grupo de nodos
+log "Creando grupo de nodos..."
+aws eks create-nodegroup \
+  --cluster-name $CLUSTER_NAME \
   --nodegroup-name tarea3-nodes \
-  --node-type $NODE_TYPE \
-  --nodes $NODE_COUNT 
-  
-log "Configurando kubectl..."
+  --node-role arn:aws:iam::$AWS_ACCOUNT_ID:role/$EKS_NODE_ROLE \
+  --subnets $SUBNET_IDS \
+  --instance-types $NODE_TYPE \
+  --scaling-config minSize=1,maxSize=$NODE_COUNT,desiredSize=$NODE_COUNT \
+  --region $AWS_REGION || handle_error "No se pudo crear el grupo de nodos"
+
+log "Esperando a que el grupo de nodos esté disponible..."
+# Esperamos a que el grupo de nodos esté en estado activo
+aws eks wait nodegroup-active --cluster-name $CLUSTER_NAME --nodegroup-name tarea3-nodes --region $AWS_REGION || handle_error "El grupo de nodos no se activó correctamente"
+
+# Configuración de kubectl
 log "Configurando kubectl para el nuevo cluster..."
 if ! aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION; then
     log "Error al actualizar kubeconfig"
     exit 1
 fi
+
 log "Contenido de kubeconfig:"
 cat ~/.kube/config | while read line; do log "$line"; done
+
 log "Versión de kubectl:"
 kubectl version --client | while read line; do log "$line"; done
 
@@ -112,6 +128,7 @@ fi
 
 log "Configuración completada. El cluster EKS está listo para usar."
 
+# Instalar Helm
 log "Instalando Helm"
 if ! curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash; then
     handle_error "Failed to install Helm"
@@ -121,7 +138,7 @@ helm version
 # Asegurarse de que las configuraciones estén disponibles para el usuario ubuntu
 mkdir -p /home/ubuntu/.kube
 mkdir -p /root/.kube
-sudo sudo cp /root/.kube/config /home/ubuntu/.kube/config
+sudo cp /root/.kube/config /home/ubuntu/.kube/config
 sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
 # Añadir kubectl al PATH del usuario ubuntu
