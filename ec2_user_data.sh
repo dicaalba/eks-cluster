@@ -157,10 +157,15 @@ helm version
 
 # Asegurar que las configuraciones estén disponibles para el usuario ubuntu
 log "Configurando acceso para el usuario ubuntu..."
+# mkdir -p /home/ubuntu/.kube
+# mkdir -p /root/.kube
+# sudo cp /root/.kube/config /home/ubuntu/.kube/config
+# sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
 mkdir -p /home/ubuntu/.kube
-mkdir -p /root/.kube
 sudo cp /root/.kube/config /home/ubuntu/.kube/config
 sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
 
 # Añadir kubectl al PATH del usuario ubuntu
 log 'export PATH=$PATH:/usr/local/bin' >> /home/ubuntu/.bashrc
