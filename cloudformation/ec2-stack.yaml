@@ -53,7 +53,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
-
+        - arn:aws:iam::aws:policy/AdministratorAccess
   BastionInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
