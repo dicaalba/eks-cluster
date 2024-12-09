@@ -193,11 +193,13 @@ jobs:
         run: |
             EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
             # Copiar archivos al EC2        
-            scp -i bastion-server.pem -o StrictHostKeyChecking=no kubernetes/nginx-deployment.yaml kubernetes/nginx-service.yaml kubernetes/nginx-index-html-configmap.yaml ubuntu@$EC2_IP:~
+            scp -i bastion-server.pem -o StrictHostKeyChecking=no kubernetes/nginx-deployment.yaml kubernetes/nginx-service.yaml ubuntu@$EC2_IP:~
                 
-            # Aplicar los archivos
+      - name: Apply Nginx resources to the cluster
+        run: |
+            EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+            # Aplicar los recursos de Nginx
             ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
-            kubectl apply -f nginx-index-html-configmap.yaml
             kubectl apply -f nginx-deployment.yaml
             kubectl apply -f nginx-service.yaml
           
@@ -226,6 +228,49 @@ jobs:
           name: connection-info
           path: connection_info.txt      
   
+  Deploy_MongoDB:
+    needs: [Deploy_CloudFormation, Conexion_EC2]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download SSH key
+        uses: actions/download-artifact@v3
+        with:
+          name: ssh-key
+        
+      - name: Set permissions for SSH key
+        run: chmod 600 bastion-server.pem
+
+      - name: Copy MongoDB YAML files to EC2
+        run: |
+            EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+            # Copiar los archivos de MongoDB a la instancia EC2
+            scp -i bastion-server.pem -o StrictHostKeyChecking=no kubernetes/namespace.yaml kubernetes/mongo-pv-pvc.yaml kubernetes/mongodb.yaml ubuntu@$EC2_IP:~
+
+      - name: Apply MongoDB resources to the cluster
+        run: |
+            EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+            # Aplicar los recursos de MongoDB
+            ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
+            # Aplicar el namespace
+            kubectl apply -f namespace.yaml
+
+            # Aplicar el PersistentVolume y PersistentVolumeClaim
+            kubectl apply -f mongo-pv-pvc.yaml
+
+            # Aplicar MongoDB
+            kubectl apply -f mongodb.yaml
+            '
+      
+      - name: Wait for MongoDB Pod to be ready
+        run: |
+          EC2_IP=${{ needs.Deploy_CloudFormation.outputs.ec2_ip }}
+          ssh -i bastion-server.pem -o StrictHostKeyChecking=no ubuntu@$EC2_IP '
+          kubectl rollout status deployment/mongodb
+          '
+
   Create_Connection_Info:
     needs: [Deploy_CloudFormation, Deploy_Nginx, Conexion_EC2]
     runs-on: ubuntu-latest
