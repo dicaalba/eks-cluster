@@ -174,5 +174,11 @@ source /home/ubuntu/.bashrc
 # Actualizar kubeconfig de AWS
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 
+# Crear un contexto asociado con el namespace 'tarea-3'
+kubectl config set-context tarea-3-context --namespace=tarea-3 --cluster=$CLUSTER_NAME --user=aws
+
+# Establecer 'tarea-3-context' como el contexto por defecto
+kubectl config use-context tarea-3-context
+
 log "Configuración del cluster EKS completada."
 log "Todas las herramientas necesarias han sido instaladas y el cluster está listo."
