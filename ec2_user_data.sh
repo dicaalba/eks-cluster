@@ -163,6 +163,7 @@ log "Configurando acceso para el usuario ubuntu..."
 # sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
 mkdir -p /home/ubuntu/.kube
+mkdir -p /root/.kube
 sudo cp /root/.kube/config /home/ubuntu/.kube/config
 sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
 
@@ -175,10 +176,10 @@ source /home/ubuntu/.bashrc
 aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 
 # Crear un contexto asociado con el namespace 'tarea-3'
-kubectl config set-context tarea-3-context --namespace=tarea-3 --cluster=$CLUSTER_NAME --user=aws
+# kubectl config set-context tarea-3-context --namespace=tarea-3 --cluster=$CLUSTER_NAME --user=aws
 
 # Establecer 'tarea-3-context' como el contexto por defecto
-kubectl config use-context tarea-3-context
+# kubectl config use-context tarea-3-context
 
 log "Configuración del cluster EKS completada."
 log "Todas las herramientas necesarias han sido instaladas y el cluster está listo."
